@@ -1,0 +1,70 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>MTG price checker</title>
+<style>
+:root{--bg:#f5f4f1;--card:#fff;--ink:#1b1b1f;--mute:#62626b;--line:#dddbd5;--up:#126b3a;--down:#a62b24}
+@media(prefers-color-scheme:dark){:root{--bg:#141417;--card:#1e1e23;--ink:#ececf0;--mute:#a2a2ad;--line:#33333b;--up:#5fd08f;--down:#ff8a80}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,sans-serif}
+main{max-width:1200px;margin:auto;padding:16px}h1{font-size:22px;margin:0}
+.mute{color:var(--mute)}#banner{background:#ffe9a8;color:#3d2f00;padding:10px 12px;border-radius:8px;margin:12px 0}
+.controls{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0}label{display:flex;flex-direction:column;font-size:12px;color:var(--mute);gap:3px}
+input,select,button{font:inherit;padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink)}
+input[type=number]{width:130px}
+#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
+article{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
+.art{aspect-ratio:488/680;display:flex;align-items:center;justify-content:center;border-radius:4.5%;border:1px solid var(--line);text-align:center;overflow:hidden}
+.art img{width:100%;height:100%;object-fit:contain}h2{font-size:16px;margin:10px 0 2px}
+dl{display:grid;grid-template-columns:1fr auto;gap:2px 8px;margin:8px 0}dd{margin:0;text-align:right}
+.box{border-top:1px solid var(--line);padding-top:6px;margin-top:6px}.up{color:var(--up);font-weight:600}.down{color:var(--down);font-weight:600}
+a{color:inherit;margin-right:10px}.pager{display:flex;gap:10px;align-items:center;justify-content:center;margin:18px}
+</style></head><body><main>
+<h1>MTG price checker</h1><p class="mute" id="stamp">Loading…</p><div id="banner" hidden></div>
+<div class="controls">
+<label>Card name or set<input id="q" type="search"></label>
+<label>Finish<select id="finish"><option value="">All</option><option value="nonfoil">Non-foil</option><option value="anyfoil">All foils</option></select></label>
+<label>Set<select id="set"><option value="">All sets</option></select></label>
+<label>Condition<select id="cond"><option>NM</option><option>EX</option><option>VG</option><option>G</option><option value="">All</option></select></label>
+<label>Sort by<select id="sort"><option value="bp">Buylist change %</option><option value="bc">Buylist change S$</option><option value="rp">Retail change %</option><option value="rc">Retail change S$</option><option value="name">Name</option><option value="price">Lowest price</option></select></label>
+<label>SGD for 1 USD<input id="fx" type="number" min="0" step="0.0001" placeholder="enter rate"></label>
+<label>Buylist multiplier<input id="mult" type="number" min="0" step="0.01" value="1.15"></label>
+<label>Extra cost per card (S$)<input id="cost" type="number" min="0" step="0.01" value="0"></label>
+</div><p id="count" class="mute"></p><div id="grid"></div>
+<div class="pager"><button id="prev">Previous</button><span id="page"></span><button id="next">Next</button></div>
+<p class="mute">Card Kingdom's selling price is what it charges buyers. It is a benchmark, not an amount it pays you. Value changes exclude shipping, duties and fees unless you include them in the extra cost. Check version, condition and current prices before buying. Card images are loaded from Scryfall. This site is not affiliated with Card Kingdom, The TCG Marketplace, Scryfall or Wizards of the Coast.</p>
+</main><script src="calc.js"></script><script>
+const $=id=>document.getElementById(id), SIZE=24; let data, page=0;
+function el(tag,text,cls){const e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;return e}
+const money=n=>(n<0?'−':'')+'S$'+Math.abs(n).toFixed(2);
+const signed=n=>(n>0?'+':'')+money(n);
+for(const id of ['fx','mult','cost']){try{const v=localStorage.getItem(id);if(v!==null)$(id).value=v}catch(e){}}
+function calc(d){const fx=+$('fx').value,c=+$('cost').value;return{r:valueChange(d.buy_sgd,d.ck_retail_usd,1,fx,c),b:valueChange(d.buy_sgd,d.ck_buylist_usd,+$('mult').value,fx,c)}}
+function result(box,label,x,why){const dl=el('dl',null,'box');dl.append(el('dt',label),el('dd',x?money(x.value):'—'));
+ if(x){const cls=x.change>0?'up':x.change<0?'down':'';dl.append(el('dt','Value change'),el('dd',signed(x.change),cls),el('dt','Value change %'),el('dd',(x.change>0?'+':'')+x.pct.toFixed(1)+'%',cls))}
+ else dl.append(el('dt',why,'mute'),el('dd',''));box.append(dl)}
+function link(box,text,href){if(!href||!href.startsWith('https://'))return;const a=el('a',text);a.href=href;a.target='_blank';a.rel='noopener';box.append(a)}
+function tile({d,r,b}){const a=el('article'),art=el('div',null,'art');
+ if(d.scryfall_id){const i=el('img');i.loading='lazy';i.alt=d.name+' ('+d.set+')';i.src='https://api.scryfall.com/cards/'+encodeURIComponent(d.scryfall_id)+'?format=image&version=normal';i.onerror=()=>art.replaceChildren(el('span','Image unavailable','mute'));art.append(i)}else art.append(el('span','No image','mute'));
+ a.append(art,el('h2',d.name),el('div',[d.set,d.variation].filter(Boolean).join(' · '),'mute'),el('div',d.finish+' · '+d.condition));
+ const top=el('dl');top.append(el('dt','Cheapest listing'),el('dd',money(d.buy_sgd)),el('dt','Listing quantity'),el('dd',d.quantity),el('dt','Price checked'),el('dd',d.checked_at||'not recorded'));a.append(top);
+ const noFx=!(+$('fx').value>0)?'Enter exchange rate':null;
+ result(a,'CK selling price',r,noFx||'No price');
+ result(a,'CK buylist × '+$('mult').value,b,noFx||(d.condition!=='NM'?'NM only':d.ck_buylist_usd?'Check multiplier':'Not buying / no price'));
+ const usd=v=>v?'US$'+v.toFixed(2):'—';
+ a.append(el('p','CK sells: '+usd(d.ck_retail_usd)+' (stock '+d.ck_retail_qty+') · buylist: '+usd(d.ck_buylist_usd)+' (wants '+d.ck_buying_qty+')','mute'));
+ link(a,'Supplier listing',d.supplier_url);if(!data.demo)link(a,'Card Kingdom',d.ck_url);return a}
+function render(){if(!data)return;const q=$('q').value.toLowerCase(),f=$('finish').value,s=$('set').value,c=$('cond').value,key=$('sort').value;
+ const rows=data.deals.filter(d=>(d.name+' '+d.set+' '+d.variation).toLowerCase().includes(q)&&(!s||d.set===s)&&(!c||d.condition===c)&&(!f||(f==='anyfoil'?d.foil:f==='nonfoil'?!d.foil:d.finish===f))).map(d=>({d,...calc(d)}));
+ const v=x=>{const o=x[key[0]];const n=o?(key[1]==='p'?o.pct:o.change):null;return n==null?-Infinity:n};
+ rows.sort((x,y)=>key==='name'?x.d.name.localeCompare(y.d.name):key==='price'?x.d.buy_sgd-y.d.buy_sgd:(v(y)>v(x)?1:v(y)<v(x)?-1:0));
+ const pages=Math.max(1,Math.ceil(rows.length/SIZE));page=Math.min(page,pages-1);
+ $('grid').replaceChildren(...rows.slice(page*SIZE,(page+1)*SIZE).map(tile));$('count').textContent=rows.length+' versions shown';
+ $('page').textContent='Page '+(page+1)+' of '+pages;$('prev').disabled=page===0;$('next').disabled=page>=pages-1}
+for(const id of ['q','finish','set','cond','sort','fx','mult','cost'])$(id).addEventListener('input',()=>{page=0;if(['fx','mult','cost'].includes(id)){try{localStorage.setItem(id,$(id).value)}catch(e){}}render()});
+$('prev').onclick=()=>{page--;render()};$('next').onclick=()=>{page++;render()};
+fetch('deals.json',{cache:'no-store'}).then(r=>{if(!r.ok)throw Error(r.status);return r.json()}).then(j=>{data=j;
+ $('stamp').textContent='Site built '+new Date(j.built_at).toLocaleString()+' · CK list dated '+(j.ck_created_at||'unknown')+' · '+j.skipped_count+' listings skipped';
+ if(j.demo){$('banner').hidden=false;$('banner').textContent='DEMO: these cards and prices are made up. Do not use them to make purchases.'}
+ for(const s of [...new Set(j.deals.map(d=>d.set))].sort())$('set').append(el('option',s));
+ for(const s of [...new Set(j.deals.filter(d=>d.foil&&d.finish!=='foil').map(d=>d.finish))].sort()){const o=el('option',s);o.value=s;$('finish').append(o)}
+ const o=el('option','Standard foil');o.value='foil';$('finish').append(o);render()})
+.catch(()=>$('stamp').textContent='Could not load deals.json. Serve this folder with a web server (see README).');
+</script></body></html>
